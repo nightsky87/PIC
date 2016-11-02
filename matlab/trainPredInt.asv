@@ -9,7 +9,7 @@ function trainPredInt(N)
     P = collectPatches(numPatches);
     
     % Reduce the patches to their respective sums
-    S = reducePatch(P);
+    S = reducePatchVert(P);
     
     % Initialize the interpolants by clustering
     I = initInterpolants(P,S,N);
@@ -34,7 +34,7 @@ function P = collectPatches(numPatches)
     npImage(end) = numPatches - sum(npImage(1:23));
 
     % Allocate memory for all training patches
-    P = zeros(36,numPatches,'single');
+    P = zeros(12,numPatches,'single');
 
     % Process each Kodak image
     a = 1;
@@ -47,47 +47,29 @@ function P = collectPatches(numPatches)
         X = double(X(:,:,1));
 
         % Collect training patches
-        P(:,a:a+npImage(i)-1) = single(im2colrand(X,[6 6],npImage(i)));
+        P(:,a:a+npImage(i)-1) = single(im2colrand(X,[4 3],npImage(i)));
         a = a + npImage(i);
     end
 end
 
-function S = reducePatch(P)
-    % Define a summing matrix for 2x2 sub-patches
+function S = reducePatchVert(P)
+    % Define the summing matrix for 2x1 sub-patches
     a = 1;
-    M = zeros(9,36);
-    for j = 1:2:6
-        for i = 1:2:6
-            T = zeros(6);
-            T(i:i+1,j:j+1) = 1;
-            M(a,:) = T(:);
-            a = a + 1;
-        end
-    end
-    
-    % Remove the top-left average
-    M = M(2:end,:);
+    M = kron(eye(6),ones(1,2));
 
-    % Calculate the sums
+    % Calculate the vertical sums
     S = M * P;
 end
 
 function I = initInterpolants(P,S,N)
-    % Find the central average
-    A = S(4,:) / 4;
+    % Find the main average
+    A = S(3,:) / 4;
     
-    % Copy the neighborhood sums for each position
-    S1 = S(3:8,:);
-    S2 = S([1 2 4 5 7 8],:);
-    S3 = S([4 5 7 8],:);
+    % Copy the target pixels
+    P = P(6,:);
     
-    % Copy the target pixels for each position
-    P1 = P(16,:);
-    P2 = P(21,:);
-    P3 = P(22,:);
-    
-    % Find the pixel differences from the central average
-    D = [P1; P2; P3] - repmat(A,[3 1]);
+    % Find the pixel difference from the refe
+    D = P - repmat(A,[3 1]);
     
     % Generate an random set of cluster centers
     C = randn(3,N);
@@ -147,8 +129,8 @@ function I = refineInterpolants(P,S,I,numIter)
     S3 = S([4 5 7 8],:);
     
     % Copy the target pixels for each position
-    P1 = repmat(P(16,:),[N 1]);
-    P2 = repmat(P(21,:),[N 1]);
+    P1 = repmat(P(21,:),[N 1]);
+    P2 = repmat(P(16,:),[N 1]);
     P3 = repmat(P(22,:),[N 1]);
 
     % Perform refinement iteratively

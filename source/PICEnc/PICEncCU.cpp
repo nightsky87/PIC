@@ -12,7 +12,8 @@ void PICEncCU(s16 *img, u16 width, u16 height, paramStruct param)
 
 	// Begin with a 4x4 Coding Pyramid Slice (CPS) and initialize successive levels
 	cp = new cpStruct;
-	cpLargest = cp;
+	cp->larger = new cpStruct;
+	cp->larger->smaller = cp;
 	cpSmallest = cp;
 	cpSmallest->smaller = NULL;
 	for (u8 i = 4, bs = 8; i <= CU_SIZE; i *= 2)
@@ -24,23 +25,38 @@ void PICEncCU(s16 *img, u16 width, u16 height, paramStruct param)
 		cp->pChroma2 = new s32[cpsSize];
 		cp->predMode = new u8[cpsSize / 16];
 
+		cp->larger->pLuma = new s32[2 * cpsSize];
+		cp->larger->pChroma1 = new s32[2 * cpsSize];
+		cp->larger->pChroma2 = new s32[2 * cpsSize];
+		cp->larger->predMode = new u8[cpsSize / 8];
+
 		// Write the CPS parameters
 		cp->width = i;
 		cp->height = i;
 		cp->chromaSub = param.chromaSub;
 
+		cp->larger->width = 2 * i;
+		cp->larger->height = i;
+		cp->larger->chromaSub = param.chromaSub;
+
 		// Assign the bitshift for the DCT
 		cp->bitshift = bs;
+		cp->larger->bitshift = bs - 1;
 		bs -= 2;
 
-		// Allocate the next CPS
-		cpLargest = cp;
-		cp = new cpStruct;
-		cp->smaller = cpLargest;
-		cpLargest->larger = cp;
+		// Allocate the next two CPS
+		cp->larger->larger = new cpStruct;
+		cp->larger->larger->larger = new cpStruct;
+
+		// Link in the reverse direction
+		cp->larger->larger->larger->smaller = cp->larger->larger;
+		cp->larger->larger->smaller = cp->larger;
+		cp = cp->larger->larger;
 	}
-	cpLargest->larger = NULL;
+	cpLargest = cp->smaller->smaller;
+	delete(cp->smaller);
 	delete(cp);
+	cpLargest->larger = NULL;
 
 	// Generate the coefficients in the CP
 	generateCP(img, width, height, cpLargest);
@@ -76,7 +92,7 @@ void PICEncCU(s16 *img, u16 width, u16 height, paramStruct param)
 		pred(cp);
 
 		// Apply an optional filter to the reconstructed slice
-		sliceFilt(cp->larger, 8);
+		sliceFilt(cp->larger, 32);
 
 		// Proceed to the next slice
 		cp = cp->larger;
@@ -108,11 +124,23 @@ void generateCP(s16 *img, u16 width, u16 height, cpStruct *cpLargest)
 	cpStruct *cp = cpLargest;
 	while (cp->width > 4)
 	{
-		for (u8 y = 0; y < cp->smaller->height; y++)
+		u8 width = cp->width;
+		u8 height = cp->height / 2;
+
+		for (u8 y = 0; y < height; y++)
 		{
-			for (u8 x = 0; x < cp->smaller->width; x++)
+			for (u8 x = 0; x < width; x++)
 			{
-				cp->smaller->pLuma[cp->smaller->width * y + x] = cp->pLuma[cp->width * (2 * y) + (2 * x)] + cp->pLuma[cp->width * (2 * y) + (2 * x + 1)] + cp->pLuma[cp->width * (2 * y + 1) + (2 * x)] + cp->pLuma[cp->width * (2 * y + 1) + (2 * x + 1)];
+				cp->smaller->pLuma[width * y + x] = cp->pLuma[width * (2 * y) + x] + cp->pLuma[width * (2 * y + 1) + x];
+			}
+		}
+		cp = cp->smaller;
+
+		for (u8 y = 0; y < height; y++)
+		{
+			for (u8 x = 0; x < width / 2; x++)
+			{
+				cp->smaller->pLuma[width / 2 * y + x] = cp->pLuma[width * y + (2 * x)] + cp->pLuma[width * y + (2 * x + 1)];
 			}
 		}
 		cp = cp->smaller;

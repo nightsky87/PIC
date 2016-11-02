@@ -118,9 +118,9 @@ void predBlock(s32 *pb, u8 stride, u8 mode)
 
 void predInt(s32 *pb, u8 stride, u8 intNum)
 {
-	const s16 *predTable1 = &pred_w1[6 * intNum];
-	const s16 *predTable2 = &pred_w2[6 * intNum];
-	const s16 *predTable3 = &pred_w3[4 * intNum];
+	const s16 *predTable1 = &pred_weights[6 * intNum];
+	const s16 *predTable2 = &pred_weights[6 * intNum];
+	const s16 *predTable3 = &pred_weights[4 * intNum];
 
 	for (u8 y = 0; y < 8; y += 2)
 	{
