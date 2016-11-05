@@ -73,31 +73,54 @@ void PICEncCU(s16 *img, u16 width, u16 height, paramStruct param)
 	// Encode each Coding Pyramid Slice (CPS) starting from the coarsest scale
 	cp = cpSmallest;
 	u8 qp = param.qp;
-	while (cp->width < CU_SIZE)
+	bool isHorizontalPass = true;
+	do
 	{
-		// Search for the best predictors for the luma component
-		predSearch(cp);
+		if (isHorizontalPass)
+		{
+			// Search for the best predictors
+			predSearchHorz(cp);
 
-		// Transform and quantize the residuals
-		dct(cp->larger);
-		quantConst(cp->larger, qp);
+			// Transform and quantize the residuals
+			dct(cp->larger);
+			quantConst(cp->larger, qp);
 
-		// Encode the residuals and prediction modes
-		resEnc(cp->larger);
-		//modeEnc(cp->larger);
+			// Encode the residuals and prediction modes
+			//resEnc(cp->larger);
+			//modeEnc(cp->larger);
 
-		// Reconstruct the larger slice
-		dequantConst(cp->larger, qp);
-		idct(cp->larger);
-		pred(cp);
+			// Reconstruct the larger slice
+			dequantConst(cp->larger, qp);
+			idct(cp->larger);
+			predHorz(cp);
+		}
+		else
+		{
+			// Search for the best predictors
+			predSearchVert(cp);
+
+			// Transform and quantize the residuals
+			dct(cp->larger);
+			quantConst(cp->larger, qp);
+
+			// Encode the residuals and prediction modes
+			//resEnc(cp->larger);
+			//modeEnc(cp->larger);
+
+			// Reconstruct the larger slice
+			dequantConst(cp->larger, qp);
+			idct(cp->larger);
+			predVert(cp);
+		}
+		isHorizontalPass = !isHorizontalPass;
 
 		// Apply an optional filter to the reconstructed slice
-		sliceFilt(cp->larger, 32);
+		//sliceFilt(cp->larger, 4);
 
 		// Proceed to the next slice
 		cp = cp->larger;
-		qp += 6;
-	}
+		qp += 3;
+	} while (cp->larger != NULL);
 
 	// Copy to the image
 	for (u8 y = 0; y < CU_SIZE; y++)

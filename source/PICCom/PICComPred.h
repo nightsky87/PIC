@@ -4,17 +4,15 @@
 #include "ComDef.h"
 #include <cstring>
 
-void pred(cpStruct *cp);
-void predLuma(cpStruct *cp);
-void predChroma(cpStruct *cp);
-void predChroma(cpStruct *cp, cpStruct *cpDiff);
+void predHorz(cpStruct *cp);
+void predVert(cpStruct *cp);
 
 void predBlock(s32 *pb, u8 stride, u8 mode);
-
 void predInt(s32 *pb, u8 stride, u8 dir);
 void predNN(s32 *pb, u8 stride);
 
-void predSearch(cpStruct *cp);
+void predSearchHorz(cpStruct *cp);
+void predSearchVert(cpStruct *cp);
 u8 predSearchBlock(s32 *pb, u8 stride, s32 *pbTrue, u8 strideTrue);
 
 u32 hadamardMetric(s32 *pb, u8 stride, s32 *pbTrue, u8 strideTrue);

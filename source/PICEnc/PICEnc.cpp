@@ -87,6 +87,8 @@ int main(int argc, char *argv[])
 	printf("%.4f\n", img.PSNR(imgRef, 255));
 	//CImgDisplay disp(img, "", 0);
 	img.save("tmp.bmp");
+	//img.display();
+
 	//// Terminate the encoding process and write to file
 	//EncodeTerminate();
 	//WriteBitstream(argv[2], trueWidth, trueHeight, channels, param);
