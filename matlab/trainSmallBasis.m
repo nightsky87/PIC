@@ -13,7 +13,7 @@ function trainSmallBasis(N)
     
     % Quantize the basis vectors and reorder for row-major format
     for i = 1:N
-        B{i} = round(64 * B{i}([1 3 2 4],:));
+        B{i} = round(256 * B{i}([1 3 2 4],:));
     end
     
     % Generate the C lookup table
@@ -157,9 +157,9 @@ function generateLookup(I)
     
     fprintf(fh,'static const s32 basis_weights[%d] = {\\\n',12*N);
     for i = 1:N-1
-        fprintf(fh,'\t% 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d,\\\n',I{i}(:));
+        fprintf(fh,'\t% 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d,\\\n',I{i}(:));
     end
-    fprintf(fh,'\t% 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d, % 3d};\n\n',I{N}(:));
+    fprintf(fh,'\t% 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d};\n\n',I{N}(:));
     fprintf(fh,'#endif\n');
     
     fclose(fh);
