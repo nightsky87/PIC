@@ -1,193 +1,210 @@
 #include "PICEncCU.h"
-#include "PICComPred.h"
+#include "PICComBasis.h"
 #include "PICComTransform.h"
 #include "PICComQuant.h"
-#include "PICComBAC.h"
+//#include "PICComBAC.h"
 #include <cstring>
 
 void PICEncCU(s16 *img, u16 width, u16 height, paramStruct param)
 {
-	// Create the Coding Pyramid (CP) structure
-	cpStruct *cpSmallest, *cpLargest, *cp;
+	// Allocate static memory for the coefficient data
+	static pel *cuLuma = new pel[CU_SIZE * CU_SIZE];
+	static pel *cuChroma1 = new pel[CU_SIZE * CU_SIZE];
+	static pel *cuChroma2 = new pel[CU_SIZE * CU_SIZE];
 
-	// Begin with a 4x4 Coding Pyramid Slice (CPS) and initialize successive levels
-	cp = new cpStruct;
-	cp->larger = new cpStruct;
-	cp->larger->smaller = cp;
-	cpSmallest = cp;
-	cpSmallest->smaller = NULL;
-	for (u8 i = 4, bs = 8; i <= CU_SIZE; i *= 2)
+	// Allocate space for the basis selectors
+	static u8 *basisSelect = new u8[NUM_BASIS_SELECTORS];
+
+	// Create a static Coding Unit structure
+	static cuStruct cu = { cuLuma, cuChroma1, cuChroma2, basisSelect, 0, CU_SIZE, CU_SIZE, param.chromaSub };
+
+	// Copy the pixels to the CU
+	if (param.chromaSub == CHROMA_400)
 	{
-		// Allocate space for the CPS coefficients
-		u16 cpsSize = i * i;
-		cp->pLuma = new s32[cpsSize];
-		cp->pChroma1 = new s32[cpsSize];
-		cp->pChroma2 = new s32[cpsSize];
-		cp->predMode = new u8[cpsSize / 16];
-
-		cp->larger->pLuma = new s32[2 * cpsSize];
-		cp->larger->pChroma1 = new s32[2 * cpsSize];
-		cp->larger->pChroma2 = new s32[2 * cpsSize];
-		cp->larger->predMode = new u8[cpsSize / 8];
-
-		// Write the CPS parameters
-		cp->width = i;
-		cp->height = i;
-		cp->chromaSub = param.chromaSub;
-
-		cp->larger->width = 2 * i;
-		cp->larger->height = i;
-		cp->larger->chromaSub = param.chromaSub;
-
-		// Assign the bitshift for the DCT
-		cp->bitshift = bs;
-		cp->larger->bitshift = bs - 1;
-		bs -= 2;
-
-		// Allocate the next two CPS
-		cp->larger->larger = new cpStruct;
-		cp->larger->larger->larger = new cpStruct;
-
-		// Link in the reverse direction
-		cp->larger->larger->larger->smaller = cp->larger->larger;
-		cp->larger->larger->smaller = cp->larger;
-		cp = cp->larger->larger;
+		for (u8 y = 0; y < CU_SIZE; y++)
+		{
+			for (u8 x = 0; x < CU_SIZE; x++)
+			{
+				cu.pLuma[CU_SIZE * y + x] = img[width * y + x];
+			}
+		}
 	}
-	cpLargest = cp->smaller->smaller;
-	delete(cp->smaller);
-	delete(cp);
-	cpLargest->larger = NULL;
-
-	// Generate the coefficients in the CP
-	generateCP(img, width, height, cpLargest);
-
-	// Encode the coarsest scale
-	dct(cpSmallest->pLuma);
-	quantConst(cpSmallest->pLuma, param.qp);
-	coreEnc(cpSmallest->pLuma);
-
-	// Reconstruct the coarsest scale
-	dequantConst(cpSmallest->pLuma, param.qp);
-	idct(cpSmallest->pLuma);
-
-	// Encode each Coding Pyramid Slice (CPS) starting from the coarsest scale
-	cp = cpSmallest;
-	u8 qp = param.qp;
-	bool isHorizontalPass = true;
-	do
+	else
 	{
-		if (isHorizontalPass)
+		const u32 chOffset = width * height;
+		for (u8 y = 0; y < CU_SIZE; y++)
 		{
-			// Search for the best predictors
-			predSearchHorz(cp);
-
-			// Transform and quantize the residuals
-			dct(cp->larger);
-			quantConst(cp->larger, qp);
-
-			// Encode the residuals and prediction modes
-			//resEnc(cp->larger);
-			//modeEnc(cp->larger);
-
-			// Reconstruct the larger slice
-			dequantConst(cp->larger, qp);
-			idct(cp->larger);
-			predHorz(cp);
+			for (u8 x = 0; x < CU_SIZE; x++)
+			{
+				cu.pLuma[CU_SIZE * y + x] = img[width * y + x];
+				cu.pChroma1[CU_SIZE * y + x] = img[width * y + x + chOffset];
+				cu.pChroma2[CU_SIZE * y + x] = img[width * y + x + 2 * chOffset];
+			}
 		}
-		else
-		{
-			// Search for the best predictors
-			predSearchVert(cp);
+	}
 
-			// Transform and quantize the residuals
-			dct(cp->larger);
-			quantConst(cp->larger, qp);
+	// Allocate static memory for a buffer of each scale
+	static pel *bufLuma = new pel[CU_SIZE * CU_SIZE];
+	static pel *bufChroma1 = new pel[CU_SIZE * CU_SIZE];
+	static pel *bufChroma2 = new pel[CU_SIZE * CU_SIZE];
 
-			// Encode the residuals and prediction modes
-			//resEnc(cp->larger);
-			//modeEnc(cp->larger);
+	// Copy all the data
+	if (param.chromaSub == CHROMA_400)
+	{
+		memcpy(bufLuma, cu.pLuma, CU_SIZE * CU_SIZE * sizeof(pel));
+	}
+	else
+	{
+		memcpy(bufLuma, cu.pLuma, CU_SIZE * CU_SIZE * sizeof(pel));
+		memcpy(bufChroma1, cu.pChroma1, CU_SIZE * CU_SIZE * sizeof(pel));
+		memcpy(bufChroma2, cu.pChroma2, CU_SIZE * CU_SIZE * sizeof(pel));
+	}
 
-			// Reconstruct the larger slice
-			dequantConst(cp->larger, qp);
-			idct(cp->larger);
-			predVert(cp);
-		}
-		isHorizontalPass = !isHorizontalPass;
+	// Begin with finest scale and progressively transform each scale
+	cu.basisIndex = 0;
+	u8 qp = param.qp;
+	u8 shift = 0;
+	for (u8 sWidth = CU_SIZE; sWidth > 4; sWidth >>= 1)
+	{
+		// Transform the current scale
+		dct(&cu, sWidth, shift);
+		shift += 2;
 
-		// Apply an optional filter to the reconstructed slice
-		//sliceFilt(cp->larger, 4);
+		// Find the locally-optimal basis functions
+		basisSearch(&cu, sWidth, qp);
 
-		// Proceed to the next slice
-		cp = cp->larger;
-		qp += 3;
-	} while (cp->larger != NULL);
+		// Fill the averages
+		fillAverage(&cu, bufLuma, bufChroma1, bufChroma2, sWidth);
+	}
+
+	// Transform the smallest scale
+	//dct(cu.pLuma, qp);
+	//idct(cu.pLuma, qp);
+
+	// Encode and reconstruct from the smallest scale
+	for (u8 sWidth = 8; sWidth <= 64; sWidth <<= 1)
+	{
+		// Encode the coefficients at the current scale
+		// Encode the basis selectors at the current scale
+		// Reverse the transformation
+		idct(&cu, sWidth, qp, shift);
+		shift -= 2;
+
+		// Reconstruct the next level
+		basisInverse(&cu, sWidth);
+	}
+	//// Generate the coefficients in the CP
+	//generateCP(img, width, height, cpLargest);
+
+	//// Encode the coarsest scale
+	//dct(cpSmallest->pLuma);
+	//quantConst(cpSmallest->pLuma, param.qp);
+	//coreEnc(cpSmallest->pLuma);
+
+	//// Reconstruct the coarsest scale
+	//dequantConst(cpSmallest->pLuma, param.qp);
+	//idct(cpSmallest->pLuma);
+
+	//// Encode each Coding Pyramid Slice (CPS) starting from the coarsest scale
+	//cp = cpSmallest;
+	//u8 qp = param.qp;
+	//bool isHorizontalPass = true;
+	//do
+	//{
+	//	if (isHorizontalPass)
+	//	{
+	//		// Search for the best predictors
+	//		predSearchHorz(cp);
+
+	//		// Transform and quantize the residuals
+	//		dct(cp->larger);
+	//		quantConst(cp->larger, qp);
+
+	//		// Encode the residuals and prediction modes
+	//		//resEnc(cp->larger);
+	//		//modeEnc(cp->larger);
+
+	//		// Reconstruct the larger slice
+	//		dequantConst(cp->larger, qp);
+	//		idct(cp->larger);
+	//		predHorz(cp);
+	//	}
+	//	else
+	//	{
+	//		// Search for the best predictors
+	//		predSearchVert(cp);
+
+	//		// Transform and quantize the residuals
+	//		dct(cp->larger);
+	//		quantConst(cp->larger, qp);
+
+	//		// Encode the residuals and prediction modes
+	//		//resEnc(cp->larger);
+	//		//modeEnc(cp->larger);
+
+	//		// Reconstruct the larger slice
+	//		dequantConst(cp->larger, qp);
+	//		idct(cp->larger);
+	//		predVert(cp);
+	//	}
+	//	isHorizontalPass = !isHorizontalPass;
+
+	//	// Apply an optional filter to the reconstructed slice
+	//	//sliceFilt(cp->larger, 4);
+
+	//	// Proceed to the next slice
+	//	cp = cp->larger;
+	//	qp += 3;
+	//} while (cp->larger != NULL);
 
 	// Copy to the image
 	for (u8 y = 0; y < CU_SIZE; y++)
 	{
 		for (u8 x = 0; x < CU_SIZE; x++)
 		{
-			img[width * y + x] = cpLargest->pLuma[cpLargest->width * y + x];
+			img[width * y + x] = cu.pLuma[CU_SIZE * y + x];
 		}
 	}
 }
 
-void generateCP(s16 *img, u16 width, u16 height, cpStruct *cpLargest)
+void fillAverage(const cuStruct *cu, pel *pLuma, pel *pChroma1, pel *pChroma2, const u8 sWidth)
 {
-	// Copy all luma pixels to the finest scale
-	for (u8 y = 0; y < CU_SIZE; y++)
-	{
-		for (u8 x = 0; x < CU_SIZE; x++)
-		{
-			cpLargest->pLuma[cpLargest->width * y + x] = img[width * y + x];
-		}
-	}
+	// Assign the height of all CU scales to be equal to the width
+	const u8 sHeight = sWidth;
 
-	// Generate each slice of the CP
-	cpStruct *cp = cpLargest;
-	while (cp->width > 4)
+	// Process each 2 x 2 region
+	if (cu->chromaSub == CHROMA_400)
 	{
-		u8 width = cp->width;
-		u8 height = cp->height / 2;
-
-		for (u8 y = 0; y < height; y++)
+		for (u8 y = 0; y < sHeight; y += 2)
 		{
-			for (u8 x = 0; x < width; x++)
+			for (u8 x = 0; x < sWidth; x += 2)
 			{
-				cp->smaller->pLuma[width * y + x] = cp->pLuma[width * (2 * y) + x] + cp->pLuma[width * (2 * y + 1) + x];
+				cu->pLuma[CU_SIZE * y / 2 + x / 2] = pLuma[CU_SIZE * y + x] + pLuma[CU_SIZE * y + x + 1] + pLuma[CU_SIZE * (y + 1) + x] + pLuma[CU_SIZE * (y + 1) + x + 1];
 			}
 		}
-		cp = cp->smaller;
 
-		for (u8 y = 0; y < height; y++)
+		for (u8 y = 0; y < sHeight / 2; y++)
 		{
-			for (u8 x = 0; x < width / 2; x++)
+			memcpy(&pLuma[CU_SIZE * y], &cu->pLuma[CU_SIZE * y], sWidth / 2 * sizeof(pel));
+		}
+	}
+	else
+	{
+		for (u8 y = 0; y < sHeight; y += 2)
+		{
+			for (u8 x = 0; x < sWidth; x += 2)
 			{
-				cp->smaller->pLuma[width / 2 * y + x] = cp->pLuma[width * y + (2 * x)] + cp->pLuma[width * y + (2 * x + 1)];
+				cu->pLuma[CU_SIZE * y / 2 + x / 2] = pLuma[CU_SIZE * y + x] + pLuma[CU_SIZE * y + x + 1] + pLuma[CU_SIZE * (y + 1) + x] + pLuma[CU_SIZE * (y + 1) + x + 1];
+				cu->pChroma1[CU_SIZE * y / 2 + x / 2] = pChroma1[CU_SIZE * y + x] + pChroma1[CU_SIZE * y + x + 1] + pChroma1[CU_SIZE * (y + 1) + x] + pChroma1[CU_SIZE * (y + 1) + x + 1];
+				cu->pChroma2[CU_SIZE * y / 2 + x / 2] = pChroma2[CU_SIZE * y + x] + pChroma2[CU_SIZE * y + x + 1] + pChroma2[CU_SIZE * (y + 1) + x] + pChroma2[CU_SIZE * (y + 1) + x + 1];
 			}
 		}
-		cp = cp->smaller;
-	}
-}
 
-void sliceFilt(cpStruct *cp, u8 preserve)
-{
-	// Filter the CPS
-	for (u8 y = 1; y < cp->height - 1; y++)
-	{
-		for (u8 x = 1; x < cp->width - 1; x++)
+		for (u8 y = 0; y < sHeight / 2; y++)
 		{
-			cp->pLuma[cp->width * y + x] *= preserve;
-			cp->pLuma[cp->width * y + x] += cp->pLuma[cp->width * (y - 1) + (x - 1)];
-			cp->pLuma[cp->width * y + x] += cp->pLuma[cp->width * (y - 1) + x];
-			cp->pLuma[cp->width * y + x] += cp->pLuma[cp->width * (y - 1) + (x + 1)];
-			cp->pLuma[cp->width * y + x] += cp->pLuma[cp->width * y + (x - 1)];
-			cp->pLuma[cp->width * y + x] += cp->pLuma[cp->width * y + (x + 1)];
-			cp->pLuma[cp->width * y + x] += cp->pLuma[cp->width * (y + 1) + (x - 1)];
-			cp->pLuma[cp->width * y + x] += cp->pLuma[cp->width * (y + 1) + x];
-			cp->pLuma[cp->width * y + x] += cp->pLuma[cp->width * (y + 1) + (x + 1)];
-			cp->pLuma[cp->width * y + x] /= (preserve + 8);
+			memcpy(&pLuma[CU_SIZE * y], &cu->pLuma[CU_SIZE * y], sWidth / 2 * sizeof(pel));
+			memcpy(&pChroma1[CU_SIZE * y], &cu->pChroma1[CU_SIZE * y], sWidth / 2 * sizeof(pel));
+			memcpy(&pChroma2[CU_SIZE * y], &cu->pChroma2[CU_SIZE * y], sWidth / 2 * sizeof(pel));
 		}
 	}
 }
-

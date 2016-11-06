@@ -2,7 +2,17 @@
 #define COMDEF_H
 
 #define CU_SIZE 64
-#define PRED_MODE_NN 0
+
+#if CU_SIZE == 16
+#define NUM_BASIS_SELECTORS 5 
+#elif CU_SIZE == 32
+#define NUM_BASIS_SELECTORS 21 
+#elif CU_SIZE == 64
+#define NUM_BASIS_SELECTORS 85 
+#elif CU_SIZE == 128
+#define NUM_BASIS_SELECTORS 341 
+#endif
+
 
 typedef unsigned char	u8;
 typedef unsigned short	u16;
@@ -10,6 +20,8 @@ typedef unsigned long	u32;
 typedef signed char		s8;
 typedef signed short	s16;
 typedef signed long		s32;
+
+typedef s32 pel;
 
 enum Component
 {
@@ -24,41 +36,24 @@ enum ChromaSub
 	CHROMA_400
 };
 
-enum ScanDir
-{
-	SCAN_VERT,
-	SCAN_HORZ,
-	SCAN_DIAG
-};
-
-enum PredType
-{
-	TYPE_UNI,
-	TYPE_LINEAR,
-	TYPE_BILINEAR
-};
-
 struct paramStruct
 {
 	u16 qp;
 	ChromaSub chromaSub;
 };
 
-struct cpStruct
+struct cuStruct
 {
-	s32 *pLuma;
-	s32 *pChroma1;
-	s32 *pChroma2;
+	pel *pLuma;
+	pel *pChroma1;
+	pel *pChroma2;
 
-	u8 *predMode;
+	u8 *basisSelect;
+	u16 basisIndex;
 
 	u8 width;
 	u8 height;
-	u8 bitshift;
 	ChromaSub chromaSub;
-
-	cpStruct *larger;
-	cpStruct *smaller;
 };
 
 #endif

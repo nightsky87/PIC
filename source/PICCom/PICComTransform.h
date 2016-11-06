@@ -2,16 +2,13 @@
 #define PIC_COM_TRANSFORM_H
 
 #include "ComDef.h"
-#include <stdlib.h>
 
-void dct(cpStruct *cp);
-void dct(s32 *tb);
-void dctHorz(s32 *tb, u8 width, u8 height, u8 bitshift);
-void dctVert(s32 *tb, u8 width, u8 height, u8 bitshift);
+void dct(pel *tb, const u8 qp);
+void dct(const cuStruct *cu, const u8 sWidth, const u8 shift);
+void dct(const pel *tb, pel *buf, const u8 sWidth, const u8 sHeight, const u8 shift);
 
-void idct(cpStruct *cp);
-void idct(s32 *tb);
-void idctHorz(s32 *tb, u8 width, u8 height, u8 bitshift);
-void idctVert(s32 *tb, u8 width, u8 height, u8 bitshift);
+void idct(pel *tb, const u8 qp);
+void idct(const cuStruct *cu, const u8 sWidth, const u8 qp, const u8 shift);
+void idct(pel *tb, const u8 sWidth, const u8 sHeight, const u8 qp, const u8 shift);
 
 #endif

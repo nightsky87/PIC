@@ -1,7 +1,7 @@
 #include "CImg.h"
 #include "ComDef.h"
 #include "PICEncCU.h"
-#include "PICComBACCore.h"
+//#include "PICComBACCore.h"
 
 #include <cassert>
 
@@ -63,11 +63,11 @@ int main(int argc, char *argv[])
 	}
 	CImg<s16> imgRef = img.get_channel(0);
 
-	// Initialize the arithmetic encoder with 8 bpp for grayscale images or 24 bpp for color images
-	if (param.chromaSub == CHROMA_400)
-		InitializeEncoder(8 * width * height);
-	else
-		InitializeEncoder(24 * width * height);
+	//// Initialize the arithmetic encoder with 8 bpp for grayscale images or 24 bpp for color images
+	//if (param.chromaSub == CHROMA_400)
+	//	InitializeEncoder(8 * width * height);
+	//else
+	//	InitializeEncoder(24 * width * height);
 
 	// Process each coding unit (CU)
 	for (u16 y = 0; y < height; y += CU_SIZE)
@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
 	printf("%.4f\n", img.PSNR(imgRef, 255));
 	//CImgDisplay disp(img, "", 0);
 	img.save("tmp.bmp");
-	//img.display();
+	img.display();
 
 	//// Terminate the encoding process and write to file
 	//EncodeTerminate();

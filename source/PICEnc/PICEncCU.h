@@ -4,8 +4,6 @@
 #include "ComDef.h"
 
 void PICEncCU(s16 *img, u16 width, u16 height, paramStruct param);
-
-void generateCP(s16 *img, u16 width, u16 height, cpStruct *cpLargest);
-void sliceFilt(cpStruct *cp, u8 preserve);
+void fillAverage(const cuStruct *cu, pel *pLuma, pel *pChroma1, pel *pChroma2, const u8 sWidth);
 
 #endif

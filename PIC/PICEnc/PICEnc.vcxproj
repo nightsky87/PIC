@@ -148,9 +148,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\source\PICCom\PICComBAC.cpp" />
-    <ClCompile Include="..\..\source\PICCom\PICComBACCore.cpp" />
-    <ClCompile Include="..\..\source\PICCom\PICComPred.cpp" />
+    <ClCompile Include="..\..\source\PICCom\PICComBasis.cpp" />
     <ClCompile Include="..\..\source\PICCom\PICComQuant.cpp" />
     <ClCompile Include="..\..\source\PICCom\PICComTransform.cpp" />
     <ClCompile Include="..\..\source\PICEnc\PICEnc.cpp" />
@@ -159,11 +157,8 @@
   <ItemGroup>
     <ClInclude Include="..\..\source\PICCom\CImg.h" />
     <ClInclude Include="..\..\source\PICCom\ComDef.h" />
-    <ClInclude Include="..\..\source\PICCom\PICComBAC.h" />
-    <ClInclude Include="..\..\source\PICCom\PICComBACContexts.h" />
-    <ClInclude Include="..\..\source\PICCom\PICComBACCore.h" />
-    <ClInclude Include="..\..\source\PICCom\PICComPred.h" />
-    <ClInclude Include="..\..\source\PICCom\PICComPredLookup.h" />
+    <ClInclude Include="..\..\source\PICCom\PICComBasis.h" />
+    <ClInclude Include="..\..\source\PICCom\PICComBasisLookup.h" />
     <ClInclude Include="..\..\source\PICCom\PICComQuant.h" />
     <ClInclude Include="..\..\source\PICCom\PICComTransform.h" />
     <ClInclude Include="..\..\source\PICEnc\PICEncCU.h" />

@@ -3,12 +3,7 @@
 
 #include "ComDef.h"
 
-void quantConst(s32 *tb, u16 qp);
-void quantConst(cpStruct *cp, u16 qp);
-
-void dequantConst(s32 *tb, u16 qp);
-void dequantConst(cpStruct *cp, u16 qp);
-
-s16 coeffCast(double val);
+s32 quantVal(const s32 val, const u8 qp);
+s32 dequantVal(const s32 val, const u8 qp);
 
 #endif

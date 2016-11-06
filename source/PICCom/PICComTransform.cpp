@@ -1,251 +1,217 @@
 #include "PICComTransform.h"
+#include "PICComQuant.h"
+#include <cstring>
 
-void dct(cpStruct *cp)
-{
-	// Transform the CPS
-	if (cp->width != cp->height)
-	{
-		dctHorz(cp->pLuma, cp->width, cp->height, cp->bitshift);
-	}
-	else
-	{
-		dctVert(cp->pLuma, cp->width, cp->height, cp->bitshift);
-	}
-
-	//// Transform the chroma components
-	//if (cp->chromaSub != CHROMA_400)
-	//{
-	//	dct(cp->pChroma1, cp->width, cp->height, cp->bitshift);
-	//	dct(cp->pChroma2, cp->width, cp->height, cp->bitshift);
-	//}
-}
-
-void dct(s32 *tb)
+void dct(pel *tb, const u8 qp)
 {
 	s32 v0, v1, v2, v3;
 
 	// Perform the horizontal pass of the 4-point even-odd DCT
 	for (u8 y = 0; y < 4; y++)
 	{
-		v0 = (s32)tb[y * 4 + 0] + (s32)tb[y * 4 + 3];
-		v1 = (s32)tb[y * 4 + 1] + (s32)tb[y * 4 + 2];
-		v2 = (s32)tb[y * 4 + 2] - (s32)tb[y * 4 + 1];
-		v3 = (s32)tb[y * 4 + 3] - (s32)tb[y * 4 + 0];
-		tb[y * 4 + 0] = (s32)((64 * (v0 + v1)) >> 9);
-		tb[y * 4 + 1] = (s32)((-36 * v2 - 83 * v3) >> 9);
-		tb[y * 4 + 2] = (s32)((64 * (v0 - v1)) >> 9);
-		tb[y * 4 + 3] = (s32)((83 * v2 - 36 * v3) >> 9);
-	}
-
-	// Perform the vertical pass of the 4-point even-odd DCT
-	for (u8 x = 0; x < 4; x ++)
-	{
-		v0 = (s32)tb[0 + x] + (s32)tb[12 + x];
-		v1 = (s32)tb[4 + x] + (s32)tb[8 + x];
-		v2 = (s32)tb[8 + x] - (s32)tb[4 + x];
-		v3 = (s32)tb[12 + x] - (s32)tb[0 + x];
-		tb[0 + x] = (s32)((64 * (v0 + v1)) >> 8);
-		tb[4 + x] = (s32)((-36 * v2 - 83 * v3) >> 8);
-		tb[8 + x] = (s32)((64 * (v0 - v1)) >> 8);
-		tb[12 + x] = (s32)((83 * v2 - 36 * v3) >> 8);
-	}
-}
-
-void dctHorz(s32 *tb, u8 width, u8 height, u8 bitshift)
-{
-	s32 v0, v1, v2, v3;
-
-	// Perform the horizontal pass of the 4-point even-odd DCT
-	for (u8 y = 0; y < height; y++)
-	{
-		for (u8 x = 0; x < width; x += 8)
-		{
-			v0 = (s32)tb[y * width + x + 1] + (s32)tb[y * width + x + 7];
-			v1 = (s32)tb[y * width + x + 3] + (s32)tb[y * width + x + 5];
-			v2 = (s32)tb[y * width + x + 5] - (s32)tb[y * width + x + 3];
-			v3 = (s32)tb[y * width + x + 7] - (s32)tb[y * width + x + 1];
-			tb[y * width + x + 1] = (s32)((64 * (v0 + v1)) >> (bitshift + 1));
-			tb[y * width + x + 3] = (s32)((-36 * v2 - 83 * v3) >> (bitshift + 1));
-			tb[y * width + x + 5] = (s32)((64 * (v0 - v1)) >> (bitshift + 1));
-			tb[y * width + x + 7] = (s32)((83 * v2 - 36 * v3) >> (bitshift + 1));
-		}
-	}
-
-	// Perform the vertical pass of the 4-point even-odd DCT
-	for (u8 y = 0; y < height; y += 4)
-	{
-		for (u8 x = 1; x < width; x += 2)
-		{
-			v0 = (s32)tb[(y + 0) * width + x] + (s32)tb[(y + 3) * width + x];
-			v1 = (s32)tb[(y + 1) * width + x] + (s32)tb[(y + 2) * width + x];
-			v2 = (s32)tb[(y + 2) * width + x] - (s32)tb[(y + 1) * width + x];
-			v3 = (s32)tb[(y + 3) * width + x] - (s32)tb[(y + 0) * width + x];
-			tb[(y + 0) * width + x] = (s32)((64 * (v0 + v1)) >> 8);
-			tb[(y + 1) * width + x] = (s32)((-36 * v2 - 83 * v3) >> 8);
-			tb[(y + 2) * width + x] = (s32)((64 * (v0 - v1)) >> 8);
-			tb[(y + 3) * width + x] = (s32)((83 * v2 - 36 * v3) >> 8);
-		}
-	}
-}
-
-void dctVert(s32 *tb, u8 width, u8 height, u8 bitshift)
-{
-	s32 v0, v1, v2, v3;
-
-	// Perform the horizontal pass of the 4-point even-odd DCT
-	for (u8 y = 1; y < height; y += 2)
-	{
-		for (u8 x = 0; x < width; x += 4)
-		{
-			v0 = (s32)tb[y * width + x + 0] + (s32)tb[y * width + x + 3];
-			v1 = (s32)tb[y * width + x + 1] + (s32)tb[y * width + x + 2];
-			v2 = (s32)tb[y * width + x + 2] - (s32)tb[y * width + x + 1];
-			v3 = (s32)tb[y * width + x + 3] - (s32)tb[y * width + x + 0];
-			tb[y * width + x + 0] = (s32)((64 * (v0 + v1)) >> (bitshift + 1));
-			tb[y * width + x + 1] = (s32)((-36 * v2 - 83 * v3) >> (bitshift + 1));
-			tb[y * width + x + 2] = (s32)((64 * (v0 - v1)) >> (bitshift + 1));
-			tb[y * width + x + 3] = (s32)((83 * v2 - 36 * v3) >> (bitshift + 1));
-		}
-	}
-
-	// Perform the vertical pass of the 4-point even-odd DCT
-	for (u8 y = 1; y < height; y += 8)
-	{
-		for (u8 x = 0; x < width; x++)
-		{
-			v0 = (s32)tb[(y + 0) * width + x] + (s32)tb[(y + 6) * width + x];
-			v1 = (s32)tb[(y + 2) * width + x] + (s32)tb[(y + 4) * width + x];
-			v2 = (s32)tb[(y + 4) * width + x] - (s32)tb[(y + 2) * width + x];
-			v3 = (s32)tb[(y + 6) * width + x] - (s32)tb[(y + 0) * width + x];
-			tb[(y + 0) * width + x] = (s32)((64 * (v0 + v1)) >> 8);
-			tb[(y + 2) * width + x] = (s32)((-36 * v2 - 83 * v3) >> 8);
-			tb[(y + 4) * width + x] = (s32)((64 * (v0 - v1)) >> 8);
-			tb[(y + 6) * width + x] = (s32)((83 * v2 - 36 * v3) >> 8);
-		}
-	}
-}
-
-void idct(cpStruct *cp)
-{
-	// Transform the CPS
-	if (cp->width != cp->height)
-	{
-		idctHorz(cp->pLuma, cp->width, cp->height, cp->bitshift);
-	}
-	else
-	{
-		idctVert(cp->pLuma, cp->width, cp->height, cp->bitshift);
-	}
-
-	//// Transform the chroma components
-	//if (cp->chromaSub != CHROMA_400)
-	//{
-	//	idct(cp->pChroma1, cp->width, cp->height, cp->bitshift);
-	//	idct(cp->pChroma2, cp->width, cp->height, cp->bitshift);
-	//}
-}
-
-void idct(s32 *tb)
-{
-	s32 v0, v1, v2, v3;
-
-	// Perform the horizontal pass of the 4-point even-odd DCT
-	for (u8 y = 0; y < 4; y++)
-	{
-		v0 = 64 * ((s32)tb[y * 4 + 0] + (s32)tb[y * 4 + 2]);
-		v1 = 64 * ((s32)tb[y * 4 + 0] - (s32)tb[y * 4 + 2]);
-		v2 = -36 * (s32)tb[y * 4 + 1] + 83 * (s32)tb[y * 4 + 3];
-		v3 = -83 * (s32)tb[y * 4 + 1] - 36 * (s32)tb[y * 4 + 3];
-		tb[y * 4 + 0] = (s32)((v0 - v3) >> 7);
-		tb[y * 4 + 1] = (s32)((v1 - v2) >> 7);
-		tb[y * 4 + 2] = (s32)((v1 + v2) >> 7);
-		tb[y * 4 + 3] = (s32)((v0 + v3) >> 7);
+		v0 = (s32)tb[CU_SIZE * y + 0] + (s32)tb[CU_SIZE * y + 3];
+		v1 = (s32)tb[CU_SIZE * y + 1] + (s32)tb[CU_SIZE * y + 2];
+		v2 = (s32)tb[CU_SIZE * y + 2] - (s32)tb[CU_SIZE * y + 1];
+		v3 = (s32)tb[CU_SIZE * y + 3] - (s32)tb[CU_SIZE * y + 0];
+		tb[CU_SIZE * y + 0] = (pel)((64 * (v0 + v1)) >> 1);
+		tb[CU_SIZE * y + 1] = (pel)((-36 * v2 - 83 * v3) >> 1);
+		tb[CU_SIZE * y + 2] = (pel)((64 * (v0 - v1)) >> 1);
+		tb[CU_SIZE * y + 3] = (pel)((83 * v2 - 36 * v3) >> 1);
 	}
 
 	// Perform the vertical pass of the 4-point even-odd DCT
 	for (u8 x = 0; x < 4; x++)
 	{
-		v0 = 64 * ((s32)tb[0 + x] + (s32)tb[8 + x]);
-		v1 = 64 * ((s32)tb[0 + x] - (s32)tb[8 + x]);
-		v2 = -36 * (s32)tb[4 + x] + 83 * (s32)tb[12 + x];
-		v3 = -83 * (s32)tb[4 + x] - 36 * (s32)tb[12 + x];
-		tb[0 + x] = (s32)((v0 - v3) >> 4);
-		tb[4 + x] = (s32)((v1 - v2) >> 4);
-		tb[8 + x] = (s32)((v1 + v2) >> 4);
-		tb[12 + x] = (s32)((v0 + v3) >> 4);
+		v0 = (s32)tb[CU_SIZE * 0 + x] + (s32)tb[CU_SIZE * 3 + x];
+		v1 = (s32)tb[CU_SIZE * 1 + x] + (s32)tb[CU_SIZE * 2 + x];
+		v2 = (s32)tb[CU_SIZE * 2 + x] - (s32)tb[CU_SIZE * 1 + x];
+		v3 = (s32)tb[CU_SIZE * 3 + x] - (s32)tb[CU_SIZE * 0 + x];
+		tb[CU_SIZE * 0 + x] = (pel)quantVal((64 * (v0 + v1)) >> 8, qp);
+		tb[CU_SIZE * 1 + x] = (pel)quantVal((-36 * v2 - 83 * v3) >> 8, qp);
+		tb[CU_SIZE * 2 + x] = (pel)quantVal((64 * (v0 - v1)) >> 8, qp);
+		tb[CU_SIZE * 3 + x] = (pel)quantVal((83 * v2 - 36 * v3) >> 8, qp);
 	}
 }
 
-void idctHorz(s32 *tb, u8 width, u8 height, u8 bitshift)
+void dct(const cuStruct *cu, const u8 sWidth, const u8 shift)
+{
+	// Assign the height of all CU scales to be equal to the width
+	const u8 sHeight = sWidth;
+
+	// Allocate space for the transform coefficients
+	static pel *buf = new pel[CU_SIZE * CU_SIZE];
+
+	// Transform the luma component
+	dct(cu->pLuma, buf, sWidth, sHeight, shift);
+	dct(&cu->pLuma[1], &buf[sWidth / 2], sWidth, sHeight, shift);
+	dct(&cu->pLuma[CU_SIZE], &buf[CU_SIZE * sHeight / 2], sWidth, sHeight, shift);
+	dct(&cu->pLuma[CU_SIZE + 1], &buf[CU_SIZE * sHeight / 2 + sWidth / 2], sWidth, sHeight, shift);
+
+	// Copy the resulting coefficients
+	for (u8 y = 0; y < sHeight; y++)
+		memcpy(&cu->pLuma[CU_SIZE * y], &buf[CU_SIZE * y], sWidth * sizeof(pel));
+
+	// Transform the chroma components
+	if (cu->chromaSub != CHROMA_400)
+	{
+		// Transform the first chroma component
+		dct(cu->pChroma1, buf, sWidth, sHeight, shift);
+		dct(&cu->pChroma1[1], &buf[sWidth / 2], sWidth, sHeight, shift);
+		dct(&cu->pChroma1[CU_SIZE], &buf[CU_SIZE * sHeight / 2], sWidth, sHeight, shift);
+		dct(&cu->pChroma1[CU_SIZE + 1], &buf[CU_SIZE * sHeight / 2 + sWidth / 2], sWidth, sHeight, shift);
+
+		// Copy the resulting coefficients
+		for (u8 y = 0; y < sHeight; y++)
+			memcpy(&cu->pChroma1[CU_SIZE * y], &buf[CU_SIZE * y], sWidth * sizeof(pel));
+
+		// Transform the second chroma component
+		dct(cu->pChroma2, buf, sWidth, sHeight, shift);
+		dct(&cu->pChroma2[1], &buf[sWidth / 2], sWidth, sHeight, shift);
+		dct(&cu->pChroma2[CU_SIZE], &buf[CU_SIZE * sHeight / 2], sWidth, sHeight, shift);
+		dct(&cu->pChroma2[CU_SIZE + 1], &buf[CU_SIZE * sHeight / 2 + sWidth / 2], sWidth, sHeight, shift);
+
+		// Copy the resulting coefficients
+		for (u8 y = 0; y < sHeight; y++)
+			memcpy(&cu->pChroma2[CU_SIZE * y], &buf[CU_SIZE * y], sWidth * sizeof(pel));
+	}
+}
+
+void dct(const pel *tb, pel *buf, const u8 sWidth, const u8 sHeight, const u8 shift)
 {
 	s32 v0, v1, v2, v3;
 
 	// Perform the horizontal pass of the 4-point even-odd DCT
-	for (u8 y = 0; y < height; y++)
+	for (u8 y = 0; y < sHeight; y += 2)
 	{
-		for (u8 x = 0; x < width; x += 8)
+		for (u8 x = 0; x < sWidth; x += 8)
 		{
-			v0 = 64 * ((s32)tb[y * width + x + 1] + (s32)tb[y * width + x + 5]);
-			v1 = 64 * ((s32)tb[y * width + x + 1] - (s32)tb[y * width + x + 5]);
-			v2 = -36 * (s32)tb[y * width + x + 3] + 83 * (s32)tb[y * width + x + 7];
-			v3 = -83 * (s32)tb[y * width + x + 3] - 36 * (s32)tb[y * width + x + 7];
-			tb[y * width + x + 1] = (s32)((v0 - v3) >> 7);
-			tb[y * width + x + 3] = (s32)((v1 - v2) >> 7);
-			tb[y * width + x + 5] = (s32)((v1 + v2) >> 7);
-			tb[y * width + x + 7] = (s32)((v0 + v3) >> 7);
+			v0 = (s32)tb[CU_SIZE * y + x + 0] + (s32)tb[CU_SIZE * y + x + 6];
+			v1 = (s32)tb[CU_SIZE * y + x + 2] + (s32)tb[CU_SIZE * y + x + 4];
+			v2 = (s32)tb[CU_SIZE * y + x + 4] - (s32)tb[CU_SIZE * y + x + 2];
+			v3 = (s32)tb[CU_SIZE * y + x + 6] - (s32)tb[CU_SIZE * y + x + 0];
+			buf[CU_SIZE * y / 2 + x / 2 + 0] = (pel)((64 * (v0 + v1)) >> (shift + 1));
+			buf[CU_SIZE * y / 2 + x / 2 + 1] = (pel)((-36 * v2 - 83 * v3) >> (shift + 1));
+			buf[CU_SIZE * y / 2 + x / 2 + 2] = (pel)((64 * (v0 - v1)) >> (shift + 1));
+			buf[CU_SIZE * y / 2 + x / 2 + 3] = (pel)((83 * v2 - 36 * v3) >> (shift + 1));
 		}
 	}
 
 	// Perform the vertical pass of the 4-point even-odd DCT
-	for (u8 y = 0; y < height; y += 4)
+	for (u8 x = 0; x < sWidth / 2; x++)
 	{
-		for (u8 x = 0; x < width; x += 2)
+		for (u8 y = 0; y < sHeight / 2; y += 4)
 		{
-			v0 = 64 * ((s32)tb[(y + 0) * width + x + 1] + (s32)tb[(y + 2) * width + x + 1]);
-			v1 = 64 * ((s32)tb[(y + 0) * width + x + 1] - (s32)tb[(y + 2) * width + x + 1]);
-			v2 = -36 * (s32)tb[(y + 1) * width + x + 1] + 83 * (s32)tb[(y + 3) * width + x + 1];
-			v3 = -83 * (s32)tb[(y + 1) * width + x + 1] - 36 * (s32)tb[(y + 3) * width + x + 1];
-			tb[(y + 0) * width + x + 1] = (s32)((v0 - v3) >> (12 - bitshift));
-			tb[(y + 1) * width + x + 1] = (s32)((v1 - v2) >> (12 - bitshift));
-			tb[(y + 2) * width + x + 1] = (s32)((v1 + v2) >> (12 - bitshift));
-			tb[(y + 3) * width + x + 1] = (s32)((v0 + v3) >> (12 - bitshift));
+			v0 = (s32)buf[CU_SIZE * (y + 0) + x] + (s32)buf[CU_SIZE * (y + 3) + x];
+			v1 = (s32)buf[CU_SIZE * (y + 1) + x] + (s32)buf[CU_SIZE * (y + 2) + x];
+			v2 = (s32)buf[CU_SIZE * (y + 2) + x] - (s32)buf[CU_SIZE * (y + 1) + x];
+			v3 = (s32)buf[CU_SIZE * (y + 3) + x] - (s32)buf[CU_SIZE * (y + 0) + x];
+			buf[CU_SIZE * (y + 0) + x] = (pel)((64 * (v0 + v1)) >> 8);
+			buf[CU_SIZE * (y + 1) + x] = (pel)((-36 * v2 - 83 * v3) >> 8);
+			buf[CU_SIZE * (y + 2) + x] = (pel)((64 * (v0 - v1)) >> 8);
+			buf[CU_SIZE * (y + 3) + x] = (pel)((83 * v2 - 36 * v3) >> 8);
 		}
 	}
 }
 
-void idctVert(s32 *tb, u8 width, u8 height, u8 bitshift)
+void idct(pel *tb, const u8 qp)
 {
+	s32 t0, t1, t2, t3;
 	s32 v0, v1, v2, v3;
 
 	// Perform the horizontal pass of the 4-point even-odd DCT
-	for (u8 y = 1; y < height; y += 2)
+	for (u8 y = 0; y < 4; y++)
 	{
-		for (u8 x = 0; x < width; x += 4)
+		t0 = dequantVal(tb[CU_SIZE * y + 0], qp);
+		t1 = dequantVal(tb[CU_SIZE * y + 1], qp);
+		t2 = dequantVal(tb[CU_SIZE * y + 2], qp);
+		t3 = dequantVal(tb[CU_SIZE * y + 3], qp);
+		v0 = 64 * (t0 + t2);
+		v1 = 64 * (t0 - t2);
+		v2 = -36 * t1 + 83 * t3;
+		v3 = -83 * t1 - 36 * t3;
+		tb[CU_SIZE * y + 0] = (pel)((v0 - v3) >> 7);
+		tb[CU_SIZE * y + 1] = (pel)((v1 - v2) >> 7);
+		tb[CU_SIZE * y + 2] = (pel)((v1 + v2) >> 7);
+		tb[CU_SIZE * y + 3] = (pel)((v0 + v3) >> 7);
+	}
+
+	// Perform the vertical pass of the 4-point even-odd DCT
+	for (u8 x = 0; x < 4; x++)
+	{
+		v0 = 64 * ((s32)tb[CU_SIZE * 0 + x] + (s32)tb[CU_SIZE * 2 + x]);
+		v1 = 64 * ((s32)tb[CU_SIZE * 0 + x] - (s32)tb[CU_SIZE * 2 + x]);
+		v2 = -36 * (s32)tb[CU_SIZE * 1 + x] + 83 * (s32)tb[CU_SIZE * 3 + x];
+		v3 = -83 * (s32)tb[CU_SIZE * 1 + x] - 36 * (s32)tb[CU_SIZE * 3 + x];
+		tb[CU_SIZE * 0 + x] = (pel)((v0 - v3) >> 12);
+		tb[CU_SIZE * 1 + x] = (pel)((v1 - v2) >> 12);
+		tb[CU_SIZE * 2 + x] = (pel)((v1 + v2) >> 12);
+		tb[CU_SIZE * 3 + x] = (pel)((v0 + v3) >> 12);
+	}
+}
+
+void idct(const cuStruct *cu, const u8 sWidth, const u8 qp, const u8 shift)
+{
+	// Assign the height of all CU scales to be equal to the width
+	const u8 sHeight = sWidth;
+
+	// Transform the luma component
+	idct(&cu->pLuma[sWidth / 2], sWidth, sHeight, qp, shift);
+	idct(&cu->pLuma[CU_SIZE * sHeight / 2], sWidth, sHeight, qp, shift);
+	idct(&cu->pLuma[CU_SIZE * sHeight / 2 + sWidth / 2], sWidth, sHeight, qp, shift);
+
+	// Transform the chroma components
+	if (cu->chromaSub != CHROMA_400)
+	{
+		// Transform the first chroma component
+		idct(&cu->pChroma1[sWidth / 2], sWidth, sHeight, qp, shift);
+		idct(&cu->pChroma1[CU_SIZE * sHeight / 2], sWidth, sHeight, qp, shift);
+		idct(&cu->pChroma1[CU_SIZE * sHeight / 2 + sWidth / 2], sWidth, sHeight, qp, shift);
+
+		// Transform the second chroma component
+		idct(&cu->pChroma2[sWidth / 2], sWidth, sHeight, qp, shift);
+		idct(&cu->pChroma2[CU_SIZE * sHeight / 2], sWidth, sHeight, qp, shift);
+		idct(&cu->pChroma2[CU_SIZE * sHeight / 2 + sWidth / 2], sWidth, sHeight, qp, shift);
+	}
+}
+
+void idct(pel *tb, const u8 sWidth, const u8 sHeight, const u8 qp, const u8 shift)
+{
+	s32 t0, t1, t2, t3;
+	s32 v0, v1, v2, v3;
+
+	// Perform the horizontal pass of the 4-point even-odd DCT
+	for (u8 y = 0; y < sHeight / 2; y++)
+	{
+		for (u8 x = 0; x < sWidth / 2; x += 4)
 		{
-			v0 = 64 * ((s32)tb[y * width + x + 0] + (s32)tb[y * width + x + 2]);
-			v1 = 64 * ((s32)tb[y * width + x + 0] - (s32)tb[y * width + x + 2]);
-			v2 = -36 * (s32)tb[y * width + x + 1] + 83 * (s32)tb[y * width + x + 3];
-			v3 = -83 * (s32)tb[y * width + x + 1] - 36 * (s32)tb[y * width + x + 3];
-			tb[y * width + x + 0] = (s32)((v0 - v3) >> 7);
-			tb[y * width + x + 1] = (s32)((v1 - v2) >> 7);
-			tb[y * width + x + 2] = (s32)((v1 + v2) >> 7);
-			tb[y * width + x + 3] = (s32)((v0 + v3) >> 7);
+			t0 = dequantVal(tb[CU_SIZE * y + x + 0], qp);
+			t1 = dequantVal(tb[CU_SIZE * y + x + 1], qp);
+			t2 = dequantVal(tb[CU_SIZE * y + x + 2], qp);
+			t3 = dequantVal(tb[CU_SIZE * y + x + 3], qp);
+			v0 = 64 * (t0 + t2);
+			v1 = 64 * (t0 - t2);
+			v2 = -36 * t1 + 83 * t3;
+			v3 = -83 * t1 - 36 * t3;
+			tb[CU_SIZE * y + x + 0] = (pel)((v0 - v3) >> 7);
+			tb[CU_SIZE * y + x + 1] = (pel)((v1 - v2) >> 7);
+			tb[CU_SIZE * y + x + 2] = (pel)((v1 + v2) >> 7);
+			tb[CU_SIZE * y + x + 3] = (pel)((v0 + v3) >> 7);
 		}
 	}
 
 	// Perform the vertical pass of the 4-point even-odd DCT
-	for (u8 y = 1; y < height; y += 8)
+	for (u8 x = 0; x < sWidth / 2; x++)
 	{
-		for (u8 x = 0; x < width; x++)
+		for (u8 y = 0; y < sHeight / 2; y += 4)
 		{
-			v0 = 64 * ((s32)tb[(y + 0) * width + x] + (s32)tb[(y + 4) * width + x]);
-			v1 = 64 * ((s32)tb[(y + 0) * width + x] - (s32)tb[(y + 4) * width + x]);
-			v2 = -36 * (s32)tb[(y + 2) * width + x] + 83 * (s32)tb[(y + 6) * width + x];
-			v3 = -83 * (s32)tb[(y + 2) * width + x] - 36 * (s32)tb[(y + 6) * width + x];
-			tb[(y + 0) * width + x] = (s32)((v0 - v3) >> (12 - bitshift));
-			tb[(y + 2) * width + x] = (s32)((v1 - v2) >> (12 - bitshift));
-			tb[(y + 4) * width + x] = (s32)((v1 + v2) >> (12 - bitshift));
-			tb[(y + 6) * width + x] = (s32)((v0 + v3) >> (12 - bitshift));
+			v0 = 64 * ((pel)tb[CU_SIZE * (y + 0) + x] + (pel)tb[CU_SIZE * (y + 2) + x]);
+			v1 = 64 * ((pel)tb[CU_SIZE * (y + 0) + x] - (pel)tb[CU_SIZE * (y + 2) + x]);
+			v2 = -36 * (pel)tb[CU_SIZE * (y + 1) + x] + 83 * (pel)tb[CU_SIZE * (y + 3) + x];
+			v3 = -83 * (pel)tb[CU_SIZE * (y + 1) + x] - 36 * (pel)tb[CU_SIZE * (y + 3) + x];
+			tb[CU_SIZE * (y + 0) + x] = (pel)((v0 - v3) >> (12 - shift));
+			tb[CU_SIZE * (y + 1) + x] = (pel)((v1 - v2) >> (12 - shift));
+			tb[CU_SIZE * (y + 2) + x] = (pel)((v1 + v2) >> (12 - shift));
+			tb[CU_SIZE * (y + 3) + x] = (pel)((v0 + v3) >> (12 - shift));
 		}
 	}
 }
