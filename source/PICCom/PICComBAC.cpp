@@ -3,10 +3,6 @@
 
 void coreEnc(s32 *tb)
 {
-	// Define the stride of the smallest CPS
-	const u8 stride = 4;
-	const u16 ctxBase = CTX_CP_LUMA_BASE(0);
-
 	// Create an ordered copy of the CPS following a diagonal scan
 	u8 ind = 0;
 	static s16 tbOrd[16];
@@ -15,7 +11,7 @@ void coreEnc(s32 *tb)
 		u8 x = 0;
 		for (s8 y = i; y >= 0; y--)
 		{
-			tbOrd[ind] = (s16)tb[stride * y + x];
+			tbOrd[ind] = (s16)tb[CU_SIZE * y + x];
 			x++;
 			ind++;
 		}
@@ -25,7 +21,7 @@ void coreEnc(s32 *tb)
 		u8 y = 3;
 		for (u8 x = i; x < 4; x++)
 		{
-			tbOrd[ind] = (s16)tb[stride * y + x];
+			tbOrd[ind] = (s16)tb[CU_SIZE * y + x];
 			y--;
 			ind++;
 		}
@@ -39,15 +35,15 @@ void coreEnc(s32 *tb)
 	// Bypass the block coding if no significant coefficients are found
 	if (lastSig < 0)
 	{
-		EncodeDecision(ctxBase + CTX_CODED_BLOCK_FLAG_OFFSET, 0);
+		EncodeDecision(CTX_CORE_CODED_BLOCK_FLAG, 0);
 		return;
 	}
-	EncodeDecision(ctxBase + CTX_CODED_BLOCK_FLAG_OFFSET, 1);
+	EncodeDecision(CTX_CORE_CODED_BLOCK_FLAG, 1);
 
 	// Signal the the position of the last significant coefficient
 	for (u8 i = 0; i < lastSig / 4; i++)
-		EncodeDecision(ctxBase + CTX_LAST_SIG_PREFIX_OFFSET, 1);
-	EncodeDecision(ctxBase + CTX_LAST_SIG_PREFIX_OFFSET, 0);
+		EncodeDecision(CTX_CORE_LAST_SIG_PREFIX, 1);
+	EncodeDecision(CTX_CORE_LAST_SIG_PREFIX, 0);
 	EncodeBypass((lastSig >> 1) & 1);
 	EncodeBypass(lastSig & 1);
 
@@ -58,11 +54,11 @@ void coreEnc(s32 *tb)
 	{
 		if (tbOrd[i] == 0)
 		{
-			EncodeDecision(ctxBase + CTX_SIG_FLAG_OFFSET + i, 0);
+			EncodeDecision(CTX_CORE_SIG_FLAG + i, 0);
 		}
 		else
 		{
-			EncodeDecision(ctxBase + CTX_SIG_FLAG_OFFSET + i, 1);
+			EncodeDecision(CTX_CORE_SIG_FLAG + i, 1);
 			coeffVal[numSig] = tbOrd[i];
 			numSig++;
 		}
@@ -75,11 +71,11 @@ void coreEnc(s32 *tb)
 
 		if (coeffAbs > 1)
 		{
-			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_1_OFFSET, 1);
+			EncodeDecision(CTX_CORE_ABS_COEFF_GREATER_1, 1);
 		}
 		else
 		{
-			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_1_OFFSET, 0);
+			EncodeDecision(CTX_CORE_ABS_COEFF_GREATER_1, 0);
 			EncodeBypass((u8)(coeffVal[i] < 0));
 			coeffVal[i] = 0;
 		}
@@ -92,12 +88,12 @@ void coreEnc(s32 *tb)
 
 		if (coeffAbs > 2)
 		{
-			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_2_OFFSET, 1);
+			EncodeDecision(CTX_CORE_ABS_COEFF_GREATER_2, 1);
 			coeffVal[i] = coeffVal[i] < 0 ? coeffVal[i] + 2 : coeffVal[i] - 2;
 		}
 		else if (coeffAbs == 2)
 		{
-			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_2_OFFSET, 0);
+			EncodeDecision(CTX_CORE_ABS_COEFF_GREATER_2, 0);
 			EncodeBypass((u8)(coeffVal[i] < 0));
 			coeffVal[i] = 0;
 		}
@@ -116,8 +112,8 @@ void coreEnc(s32 *tb)
 				msb--;
 
 			for (u8 j = 0; j < msb; j++)
-				EncodeDecision(ctxBase + CTX_ABS_COEFF_LEVEL_OFFSET, 1);
-			EncodeDecision(ctxBase + CTX_ABS_COEFF_LEVEL_OFFSET, 0);
+				EncodeDecision(CTX_CORE_ABS_COEFF_LEVEL, 1);
+			EncodeDecision(CTX_CORE_ABS_COEFF_LEVEL, 0);
 
 			for (s8 j = msb - 1; j >= 0; j--)
 				EncodeBypass((coeffAbs >> j) & 1);
@@ -127,217 +123,217 @@ void coreEnc(s32 *tb)
 	}
 }
 
-void resEnc(cpStruct *cp)
-{
-	const u16 level = cp->width == 8 ? 1 : cp->width == 16 ? 2 : cp->width == 32 ? 3 : 4;
-
-	for (u8 y = 0; y < cp->height; y += 8)
-	{
-		for (u8 x = 0; x < cp->width; x += 8)
-		{
-			blockEnc(&cp->pLuma[cp->width * y + x + 1], cp->width, CTX_CP_LUMA_BASE(level));
-			blockEnc(&cp->pLuma[cp->width * (y + 1) + x], cp->width, CTX_CP_LUMA_BASE(level));
-			blockEnc(&cp->pLuma[cp->width * (y + 1) + x + 1], cp->width, CTX_CP_LUMA_BASE(level));
-		}
-	}
-}
-
-void modeEnc(cpStruct *cp)
-{
-	// Transmit the first mode
-	if (cp->predMode[0] == PRED_MODE_NN)
-	{
-		EncodeDecision(CTX_PRED_MODE_NN, 1);
-	}
-	else
-	{
-		EncodeDecision(CTX_PRED_MODE_NN, 0);
-		EncodeBypass((cp->predMode[0] >> 2) & 1);
-		EncodeBypass((cp->predMode[0] >> 1) & 1);
-		EncodeBypass(cp->predMode[0] & 1);
-	}
-
-	// Transmit the first row
-	for (u8 x = 1; x < cp->width / 4; x++)
-	{
-		if (cp->predMode[x] == cp->predMode[x - 1])
-		{
-			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 1);
-		}
-		else if (cp->predMode[x] == PRED_MODE_NN)
-		{
-			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
-			EncodeDecision(CTX_PRED_MODE_NN, 1);
-		}
-		else
-		{
-			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
-			EncodeDecision(CTX_PRED_MODE_NN, 0);
-			EncodeBypass((cp->predMode[x] >> 2) & 1);
-			EncodeBypass((cp->predMode[x] >> 1) & 1);
-			EncodeBypass(cp->predMode[x] & 1);
-		}
-	}
-
-	// Transmit the remaining modes
-	for (u8 y = 1; y < cp->height / 4; y++)
-	{
-		if (cp->predMode[cp->width * y] == cp->predMode[cp->width * (y - 1)])
-		{
-			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 1);
-		}
-		else if (cp->predMode[cp->width * y] == PRED_MODE_NN)
-		{
-			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
-			EncodeDecision(CTX_PRED_MODE_NN, 1);
-		}
-		else
-		{
-			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
-			EncodeDecision(CTX_PRED_MODE_NN, 0);
-			EncodeBypass((cp->predMode[cp->width * y] >> 2) & 1);
-			EncodeBypass((cp->predMode[cp->width * y] >> 1) & 1);
-			EncodeBypass(cp->predMode[cp->width * y] & 1);
-		}
-
-		// Transmit the first row
-		for (u8 x = 1; x < cp->width / 4; x++)
-		{
-			if (cp->predMode[cp->width * y + x] == cp->predMode[cp->width * y + x - 1])
-			{
-				EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 1);
-			}
-			else if (cp->predMode[cp->width * y + x] == PRED_MODE_NN)
-			{
-				EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
-				EncodeDecision(CTX_PRED_MODE_NN, 1);
-			}
-			else
-			{
-				EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
-				EncodeDecision(CTX_PRED_MODE_NN, 0);
-				EncodeBypass((cp->predMode[cp->width * y + x] >> 2) & 1);
-				EncodeBypass((cp->predMode[cp->width * y + x] >> 1) & 1);
-				EncodeBypass(cp->predMode[cp->width * y + x] & 1);
-			}
-		}
-	}
-}
-
-void blockEnc(s32 *tb, u8 stride, u16 ctxBase)
-{
-	// Create an ordered copy of the CPS following a diagonal scan
-	u8 ind = 0;
-	static s16 tbOrd[16];
-	for (u8 i = 0; i < 8; i += 2)
-	{
-		u8 x = 0;
-		for (s8 y = i; y >= 0; y -= 2)
-		{
-			tbOrd[ind] = (s16)tb[stride * y + x];
-			x += 2;
-			ind++;
-		}
-	}
-	for (u8 i = 2; i < 8; i += 2)
-	{
-		u8 y = 6;
-		for (u8 x = i; x < 8; x += 2)
-		{
-			tbOrd[ind] = (s16)tb[stride * y + x];
-			y -= 2;
-			ind++;
-		}
-	}
-
-	// Determine the index of the last significant coefficient in the CPS
-	s8 lastSig = 15;
-	while (tbOrd[lastSig] == 0 && lastSig >= 0)
-		lastSig--;
-
-	// Bypass the block coding if no significant coefficients are found
-	if (lastSig < 0)
-	{
-		EncodeDecision(ctxBase + CTX_CODED_BLOCK_FLAG_OFFSET, 0);
-		return;
-	}
-	EncodeDecision(ctxBase + CTX_CODED_BLOCK_FLAG_OFFSET, 1);
-
-	// Signal the significance map
-	u8 numSig = 0;
-	s16 coeffVal[16];
-	for (u8 i = 0; i <= lastSig; i++)
-	{
-		if (tbOrd[i] == 0)
-		{
-			EncodeDecision(ctxBase + CTX_SIG_FLAG_OFFSET + i, 0);
-		}
-		else
-		{
-			EncodeDecision(ctxBase + CTX_SIG_FLAG_OFFSET + i, 1);
-			coeffVal[numSig] = tbOrd[i];
-			numSig++;
-		}
-	}
-
-	// Signal if the absolute coefficient is greater than 1
-	for (u8 i = 0; i < numSig; i++)
-	{
-		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
-
-		if (coeffAbs > 1)
-		{
-			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_1_OFFSET, 1);
-		}
-		else
-		{
-			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_1_OFFSET, 0);
-			EncodeBypass((u8)(coeffVal[i] < 0));
-			coeffVal[i] = 0;
-		}
-	}
-
-	// Signal if the absolute coefficient is greater than 2
-	for (u8 i = 0; i < numSig; i++)
-	{
-		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
-
-		if (coeffAbs > 2)
-		{
-			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_2_OFFSET, 1);
-			coeffVal[i] = coeffVal[i] < 0 ? coeffVal[i] + 2 : coeffVal[i] - 2;
-		}
-		else if (coeffAbs == 2)
-		{
-			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_2_OFFSET, 0);
-			EncodeBypass((u8)(coeffVal[i] < 0));
-			coeffVal[i] = 0;
-		}
-	}
-
-	// Signal the remaining coefficient level using Exp-Golomb coding
-	for (u8 i = 0; i < numSig; i++)
-	{
-		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
-
-		if (coeffAbs > 0)
-		{
-			// Count the number of bits
-			u8 msb = 15;
-			while ((coeffAbs >> msb) == 0)
-				msb--;
-
-			for (u8 j = 0; j < msb; j++)
-				EncodeDecision(ctxBase + CTX_ABS_COEFF_LEVEL_OFFSET, 1);
-			EncodeDecision(ctxBase + CTX_ABS_COEFF_LEVEL_OFFSET, 0);
-
-			for (s8 j = msb - 1; j >= 0; j--)
-				EncodeBypass((coeffAbs >> j) & 1);
-
-			EncodeBypass((u8)(coeffVal[i] < 0));
-		}
-	}
-}
+//void resEnc(cpStruct *cp)
+//{
+//	const u16 level = cp->width == 8 ? 1 : cp->width == 16 ? 2 : cp->width == 32 ? 3 : 4;
+//
+//	for (u8 y = 0; y < cp->height; y += 8)
+//	{
+//		for (u8 x = 0; x < cp->width; x += 8)
+//		{
+//			blockEnc(&cp->pLuma[cp->width * y + x + 1], cp->width, CTX_CP_LUMA_BASE(level));
+//			blockEnc(&cp->pLuma[cp->width * (y + 1) + x], cp->width, CTX_CP_LUMA_BASE(level));
+//			blockEnc(&cp->pLuma[cp->width * (y + 1) + x + 1], cp->width, CTX_CP_LUMA_BASE(level));
+//		}
+//	}
+//}
+//
+//void modeEnc(cpStruct *cp)
+//{
+//	// Transmit the first mode
+//	if (cp->predMode[0] == PRED_MODE_NN)
+//	{
+//		EncodeDecision(CTX_PRED_MODE_NN, 1);
+//	}
+//	else
+//	{
+//		EncodeDecision(CTX_PRED_MODE_NN, 0);
+//		EncodeBypass((cp->predMode[0] >> 2) & 1);
+//		EncodeBypass((cp->predMode[0] >> 1) & 1);
+//		EncodeBypass(cp->predMode[0] & 1);
+//	}
+//
+//	// Transmit the first row
+//	for (u8 x = 1; x < cp->width / 4; x++)
+//	{
+//		if (cp->predMode[x] == cp->predMode[x - 1])
+//		{
+//			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 1);
+//		}
+//		else if (cp->predMode[x] == PRED_MODE_NN)
+//		{
+//			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
+//			EncodeDecision(CTX_PRED_MODE_NN, 1);
+//		}
+//		else
+//		{
+//			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
+//			EncodeDecision(CTX_PRED_MODE_NN, 0);
+//			EncodeBypass((cp->predMode[x] >> 2) & 1);
+//			EncodeBypass((cp->predMode[x] >> 1) & 1);
+//			EncodeBypass(cp->predMode[x] & 1);
+//		}
+//	}
+//
+//	// Transmit the remaining modes
+//	for (u8 y = 1; y < cp->height / 4; y++)
+//	{
+//		if (cp->predMode[cp->width * y] == cp->predMode[cp->width * (y - 1)])
+//		{
+//			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 1);
+//		}
+//		else if (cp->predMode[cp->width * y] == PRED_MODE_NN)
+//		{
+//			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
+//			EncodeDecision(CTX_PRED_MODE_NN, 1);
+//		}
+//		else
+//		{
+//			EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
+//			EncodeDecision(CTX_PRED_MODE_NN, 0);
+//			EncodeBypass((cp->predMode[cp->width * y] >> 2) & 1);
+//			EncodeBypass((cp->predMode[cp->width * y] >> 1) & 1);
+//			EncodeBypass(cp->predMode[cp->width * y] & 1);
+//		}
+//
+//		// Transmit the first row
+//		for (u8 x = 1; x < cp->width / 4; x++)
+//		{
+//			if (cp->predMode[cp->width * y + x] == cp->predMode[cp->width * y + x - 1])
+//			{
+//				EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 1);
+//			}
+//			else if (cp->predMode[cp->width * y + x] == PRED_MODE_NN)
+//			{
+//				EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
+//				EncodeDecision(CTX_PRED_MODE_NN, 1);
+//			}
+//			else
+//			{
+//				EncodeDecision(CTX_PRED_COPY_MODE_FLAG, 0);
+//				EncodeDecision(CTX_PRED_MODE_NN, 0);
+//				EncodeBypass((cp->predMode[cp->width * y + x] >> 2) & 1);
+//				EncodeBypass((cp->predMode[cp->width * y + x] >> 1) & 1);
+//				EncodeBypass(cp->predMode[cp->width * y + x] & 1);
+//			}
+//		}
+//	}
+//}
+//
+//void blockEnc(s32 *tb, u8 stride, u16 ctxBase)
+//{
+//	// Create an ordered copy of the CPS following a diagonal scan
+//	u8 ind = 0;
+//	static s16 tbOrd[16];
+//	for (u8 i = 0; i < 8; i += 2)
+//	{
+//		u8 x = 0;
+//		for (s8 y = i; y >= 0; y -= 2)
+//		{
+//			tbOrd[ind] = (s16)tb[stride * y + x];
+//			x += 2;
+//			ind++;
+//		}
+//	}
+//	for (u8 i = 2; i < 8; i += 2)
+//	{
+//		u8 y = 6;
+//		for (u8 x = i; x < 8; x += 2)
+//		{
+//			tbOrd[ind] = (s16)tb[stride * y + x];
+//			y -= 2;
+//			ind++;
+//		}
+//	}
+//
+//	// Determine the index of the last significant coefficient in the CPS
+//	s8 lastSig = 15;
+//	while (tbOrd[lastSig] == 0 && lastSig >= 0)
+//		lastSig--;
+//
+//	// Bypass the block coding if no significant coefficients are found
+//	if (lastSig < 0)
+//	{
+//		EncodeDecision(ctxBase + CTX_CODED_BLOCK_FLAG_OFFSET, 0);
+//		return;
+//	}
+//	EncodeDecision(ctxBase + CTX_CODED_BLOCK_FLAG_OFFSET, 1);
+//
+//	// Signal the significance map
+//	u8 numSig = 0;
+//	s16 coeffVal[16];
+//	for (u8 i = 0; i <= lastSig; i++)
+//	{
+//		if (tbOrd[i] == 0)
+//		{
+//			EncodeDecision(ctxBase + CTX_SIG_FLAG_OFFSET + i, 0);
+//		}
+//		else
+//		{
+//			EncodeDecision(ctxBase + CTX_SIG_FLAG_OFFSET + i, 1);
+//			coeffVal[numSig] = tbOrd[i];
+//			numSig++;
+//		}
+//	}
+//
+//	// Signal if the absolute coefficient is greater than 1
+//	for (u8 i = 0; i < numSig; i++)
+//	{
+//		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
+//
+//		if (coeffAbs > 1)
+//		{
+//			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_1_OFFSET, 1);
+//		}
+//		else
+//		{
+//			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_1_OFFSET, 0);
+//			EncodeBypass((u8)(coeffVal[i] < 0));
+//			coeffVal[i] = 0;
+//		}
+//	}
+//
+//	// Signal if the absolute coefficient is greater than 2
+//	for (u8 i = 0; i < numSig; i++)
+//	{
+//		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
+//
+//		if (coeffAbs > 2)
+//		{
+//			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_2_OFFSET, 1);
+//			coeffVal[i] = coeffVal[i] < 0 ? coeffVal[i] + 2 : coeffVal[i] - 2;
+//		}
+//		else if (coeffAbs == 2)
+//		{
+//			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_2_OFFSET, 0);
+//			EncodeBypass((u8)(coeffVal[i] < 0));
+//			coeffVal[i] = 0;
+//		}
+//	}
+//
+//	// Signal the remaining coefficient level using Exp-Golomb coding
+//	for (u8 i = 0; i < numSig; i++)
+//	{
+//		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
+//
+//		if (coeffAbs > 0)
+//		{
+//			// Count the number of bits
+//			u8 msb = 15;
+//			while ((coeffAbs >> msb) == 0)
+//				msb--;
+//
+//			for (u8 j = 0; j < msb; j++)
+//				EncodeDecision(ctxBase + CTX_ABS_COEFF_LEVEL_OFFSET, 1);
+//			EncodeDecision(ctxBase + CTX_ABS_COEFF_LEVEL_OFFSET, 0);
+//
+//			for (s8 j = msb - 1; j >= 0; j--)
+//				EncodeBypass((coeffAbs >> j) & 1);
+//
+//			EncodeBypass((u8)(coeffVal[i] < 0));
+//		}
+//	}
+//}
 
 //void hstbEnc(scuStruct *scu)
 //{

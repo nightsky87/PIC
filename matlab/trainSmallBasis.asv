@@ -12,10 +12,15 @@ function trainSmallBasis(N)
     I = initInterpolants(P,N);
     
     % Iteratively refine the interpolants
-    [I,B] = refineInterpolants(P,I,100);
+    I = refineInterpolants(P,I,100);
+    
+    % Quantize the basis vectors and reorder for row-major format
+    for i = 1:N
+        B{i} = round(256 * B{i}([1 3 2 4],:));
+    end
     
     % Generate the C lookup table
-    generateLookup(I,B);
+    generateLookup(B);
 end
 
 function P = collectPatches(numPatches)
@@ -100,7 +105,7 @@ function I = initInterpolants(P,N)
     end
 end
 
-function [I,B] = refineInterpolants(P,I,numIter)
+function I = refineInterpolants(P,I,numIter)
     % Determine the number of interpolants
     N = size(I,1);
     
@@ -145,16 +150,11 @@ function [I,B] = refineInterpolants(P,I,numIter)
         end
     end
     
-    % Quantize the interpolants
-    for i = 1:N
-        I{i} = round(256 * I{i});
-    end
-    
     % Stack the interpolants
     Is = cell2mat(I);
     
     % Find the best interpolant for each patch
-    E = reshape(sum(reshape((P - Is * S / 256) .^ 2,4,[])),N,[]);
+    E = reshape(sum(reshape((P - Is * S) .^ 2,4,[])),N,[]);
     [~,int] = min(E,[],1);
     
     % Find the error basis for each interpolant
@@ -164,7 +164,7 @@ function [I,B] = refineInterpolants(P,I,numIter)
         mask = (int == i);
 
         % Calculate the interpolation errors
-        E = P(1:4,mask) - round(I{i} * S(:,mask) / 256);
+        E = P(1:4,mask) - I{i} * S(:,mask);
         [U,~,~] = svd(E,'econ');
         
         % Standardize the orientations of the basis vectors
@@ -172,11 +172,11 @@ function [I,B] = refineInterpolants(P,I,numIter)
             [~,ind] = max(abs(U(:,j)));
             U(:,j) = U(:,j) / sign(U(ind,j));
         end
-        B{i} = round(256 * U(:,1:3));
+        B{
     end
 end
 
-function generateLookup(I,B)
+function generateLookup(I)
     % Determine the number of interpolants
     N = size(I,1);
 
@@ -188,17 +188,11 @@ function generateLookup(I,B)
     fprintf(fh,'#include "ComDef.h"\n\n');
     fprintf(fh,'#define NUM_BASIS %d\n\n',N);
     
-    fprintf(fh,'static const s32 interp_weights[%d] = {\\\n',16*N);
-    for i = 1:N-1
-        fprintf(fh,'\t% 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d,\\\n',reshape(I{i}',[],1));
-    end
-    fprintf(fh,'\t% 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d};\n\n',reshape(I{i}',[],1));
-
     fprintf(fh,'static const s32 basis_weights[%d] = {\\\n',12*N);
     for i = 1:N-1
-        fprintf(fh,'\t% 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d,\\\n',B{i}(:));
+        fprintf(fh,'\t% 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d,\\\n',I{i}(:));
     end
-    fprintf(fh,'\t% 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d};\n\n',B{N}(:));
+    fprintf(fh,'\t% 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d, % 4d};\n\n',I{N}(:));
     fprintf(fh,'#endif\n');
     
     fclose(fh);
