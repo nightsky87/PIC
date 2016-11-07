@@ -123,21 +123,229 @@ void coreEnc(s32 *tb)
 	}
 }
 
-//void resEnc(cpStruct *cp)
-//{
-//	const u16 level = cp->width == 8 ? 1 : cp->width == 16 ? 2 : cp->width == 32 ? 3 : 4;
-//
-//	for (u8 y = 0; y < cp->height; y += 8)
-//	{
-//		for (u8 x = 0; x < cp->width; x += 8)
-//		{
-//			blockEnc(&cp->pLuma[cp->width * y + x + 1], cp->width, CTX_CP_LUMA_BASE(level));
-//			blockEnc(&cp->pLuma[cp->width * (y + 1) + x], cp->width, CTX_CP_LUMA_BASE(level));
-//			blockEnc(&cp->pLuma[cp->width * (y + 1) + x + 1], cp->width, CTX_CP_LUMA_BASE(level));
-//		}
-//	}
-//}
-//
+void blockEnc(s32 *tb, u16 ctxBase)
+{
+	// Create an ordered copy of the CPS following a diagonal scan
+	u8 ind = 0;
+	static s16 tbOrd[16];
+	for (u8 i = 0; i < 4; i++)
+	{
+		u8 x = 0;
+		for (s8 y = i; y >= 0; y--)
+		{
+			tbOrd[ind] = (s16)tb[CU_SIZE * y + x];
+			x++;
+			ind++;
+		}
+	}
+	for (u8 i = 1; i < 4; i++)
+	{
+		u8 y = 3;
+		for (u8 x = i; x < 4; x++)
+		{
+			tbOrd[ind] = (s16)tb[CU_SIZE * y + x];
+			y--;
+			ind++;
+		}
+	}
+
+	// Determine the index of the last significant coefficient in the CPS
+	s8 lastSig = 15;
+	while (tbOrd[lastSig] == 0 && lastSig >= 0)
+		lastSig--;
+
+	// Bypass the block coding if no significant coefficients are found
+	if (lastSig < 0)
+	{
+		EncodeDecision(ctxBase + CTX_CODED_BLOCK_FLAG_OFFSET, 0);
+		return;
+	}
+	EncodeDecision(ctxBase + CTX_CODED_BLOCK_FLAG_OFFSET, 1);
+
+	// Signal the significance map
+	u8 numSig = 0;
+	s16 coeffVal[16];
+	for (u8 i = 0; i <= lastSig; i++)
+	{
+		if (tbOrd[i] == 0)
+		{
+			EncodeDecision(ctxBase + CTX_SIG_FLAG_OFFSET + i, 0);
+		}
+		else
+		{
+			EncodeDecision(ctxBase + CTX_SIG_FLAG_OFFSET + i, 1);
+			coeffVal[numSig] = tbOrd[i];
+			numSig++;
+		}
+	}
+
+	// Signal if the absolute coefficient is greater than 1
+	for (u8 i = 0; i < numSig; i++)
+	{
+		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
+
+		if (coeffAbs > 1)
+		{
+			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_1_OFFSET, 1);
+		}
+		else
+		{
+			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_1_OFFSET, 0);
+			EncodeBypass((u8)(coeffVal[i] < 0));
+			coeffVal[i] = 0;
+		}
+	}
+
+	// Signal if the absolute coefficient is greater than 2
+	for (u8 i = 0; i < numSig; i++)
+	{
+		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
+
+		if (coeffAbs > 2)
+		{
+			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_2_OFFSET, 1);
+			coeffVal[i] = coeffVal[i] < 0 ? coeffVal[i] + 2 : coeffVal[i] - 2;
+		}
+		else if (coeffAbs == 2)
+		{
+			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_2_OFFSET, 0);
+			EncodeBypass((u8)(coeffVal[i] < 0));
+			coeffVal[i] = 0;
+		}
+	}
+
+	// Signal the remaining coefficient level using Exp-Golomb coding
+	for (u8 i = 0; i < numSig; i++)
+	{
+		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
+
+		if (coeffAbs > 0)
+		{
+			// Count the number of bits
+			u8 msb = 15;
+			while ((coeffAbs >> msb) == 0)
+				msb--;
+
+			for (u8 j = 0; j < msb; j++)
+				EncodeDecision(ctxBase + CTX_ABS_COEFF_LEVEL_OFFSET, 1);
+			EncodeDecision(ctxBase + CTX_ABS_COEFF_LEVEL_OFFSET, 0);
+
+			for (s8 j = msb - 1; j >= 0; j--)
+				EncodeBypass((coeffAbs >> j) & 1);
+
+			EncodeBypass((u8)(coeffVal[i] < 0));
+		}
+	}
+}
+
+void quadEnc(cuStruct *cu, const u8 sWidth, const u8 sHeight, const u8 quadID)
+{
+	// Check if the first quadrant is empty
+	bool isEmpty = true;
+	for (u8 y = 0; y < sHeight / 2; y++)
+	{
+		for (u8 x = sWidth / 2; x < sWidth; x++)
+		{
+			if (cu->pLuma[CU_SIZE * y + x] != 0)
+			{
+				isEmpty = false;
+				break;
+			}
+		}
+
+		if (!isEmpty)
+			break;
+	}
+
+	// Encode the first quadrant
+	if (isEmpty)
+	{
+		EncodeDecision(CTX_QUADRANT_BASE(quadID) + CTX_CODED_QUADRANT_OFFSET, 0);
+	}
+	else
+	{
+		EncodeDecision(CTX_QUADRANT_BASE(quadID) + CTX_CODED_QUADRANT_OFFSET, 1);
+		for (u8 y = 0; y < sHeight / 2; y += 4)
+		{
+			for (u8 x = sWidth / 2; x < sWidth; x += 4)
+			{
+				blockEnc(&cu->pLuma[CU_SIZE * y + x], CTX_QUADRANT_BASE(quadID));
+			}
+		}
+	}
+
+	// Check if the second quadrant is empty
+	isEmpty = true;
+	for (u8 y = sHeight / 2; y < sHeight; y++)
+	{
+		for (u8 x = 0; x < sWidth / 2; x++)
+		{
+			if (cu->pLuma[CU_SIZE * y + x] != 0)
+			{
+				isEmpty = false;
+				break;
+			}
+		}
+
+		if (!isEmpty)
+			break;
+	}
+
+	// Encode the second quadrant
+	if (isEmpty)
+	{
+		EncodeDecision(CTX_QUADRANT_BASE(quadID + 1) + CTX_CODED_QUADRANT_OFFSET, 0);
+	}
+	else
+	{
+		EncodeDecision(CTX_QUADRANT_BASE(quadID + 1) + CTX_CODED_QUADRANT_OFFSET, 1);
+		for (u8 y = sHeight / 2; y < sHeight; y += 4)
+		{
+			for (u8 x = 0; x < sWidth / 2; x += 4)
+			{
+				blockEnc(&cu->pLuma[CU_SIZE * y + x], CTX_QUADRANT_BASE(quadID + 1));
+			}
+		}
+	}
+
+	// Check if the third quadrant is empty
+	isEmpty = true;
+	for (u8 y = sHeight / 2; y < sHeight; y++)
+	{
+		for (u8 x = sWidth / 2; x < sWidth; x++)
+		{
+			if (cu->pLuma[CU_SIZE * y + x] != 0)
+			{
+				isEmpty = false;
+				break;
+			}
+		}
+
+		if (!isEmpty)
+			break;
+	}
+
+	// Encode the first quadrant
+	if (isEmpty)
+	{
+		EncodeDecision(CTX_QUADRANT_BASE(quadID + 2) + CTX_CODED_QUADRANT_OFFSET, 0);
+	}
+	else
+	{
+		EncodeDecision(CTX_QUADRANT_BASE(quadID + 2) + CTX_CODED_QUADRANT_OFFSET, 1);
+		for (u8 y = sHeight / 2; y < sHeight; y += 4)
+		{
+			for (u8 x = sWidth / 2; x < sWidth; x += 4)
+			{
+				blockEnc(&cu->pLuma[CU_SIZE * y + x], CTX_QUADRANT_BASE(quadID + 2));
+			}
+		}
+	}
+}
+
+
+
+
 //void modeEnc(cpStruct *cp)
 //{
 //	// Transmit the first mode
@@ -219,121 +427,7 @@ void coreEnc(s32 *tb)
 //		}
 //	}
 //}
-//
-//void blockEnc(s32 *tb, u8 stride, u16 ctxBase)
-//{
-//	// Create an ordered copy of the CPS following a diagonal scan
-//	u8 ind = 0;
-//	static s16 tbOrd[16];
-//	for (u8 i = 0; i < 8; i += 2)
-//	{
-//		u8 x = 0;
-//		for (s8 y = i; y >= 0; y -= 2)
-//		{
-//			tbOrd[ind] = (s16)tb[stride * y + x];
-//			x += 2;
-//			ind++;
-//		}
-//	}
-//	for (u8 i = 2; i < 8; i += 2)
-//	{
-//		u8 y = 6;
-//		for (u8 x = i; x < 8; x += 2)
-//		{
-//			tbOrd[ind] = (s16)tb[stride * y + x];
-//			y -= 2;
-//			ind++;
-//		}
-//	}
-//
-//	// Determine the index of the last significant coefficient in the CPS
-//	s8 lastSig = 15;
-//	while (tbOrd[lastSig] == 0 && lastSig >= 0)
-//		lastSig--;
-//
-//	// Bypass the block coding if no significant coefficients are found
-//	if (lastSig < 0)
-//	{
-//		EncodeDecision(ctxBase + CTX_CODED_BLOCK_FLAG_OFFSET, 0);
-//		return;
-//	}
-//	EncodeDecision(ctxBase + CTX_CODED_BLOCK_FLAG_OFFSET, 1);
-//
-//	// Signal the significance map
-//	u8 numSig = 0;
-//	s16 coeffVal[16];
-//	for (u8 i = 0; i <= lastSig; i++)
-//	{
-//		if (tbOrd[i] == 0)
-//		{
-//			EncodeDecision(ctxBase + CTX_SIG_FLAG_OFFSET + i, 0);
-//		}
-//		else
-//		{
-//			EncodeDecision(ctxBase + CTX_SIG_FLAG_OFFSET + i, 1);
-//			coeffVal[numSig] = tbOrd[i];
-//			numSig++;
-//		}
-//	}
-//
-//	// Signal if the absolute coefficient is greater than 1
-//	for (u8 i = 0; i < numSig; i++)
-//	{
-//		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
-//
-//		if (coeffAbs > 1)
-//		{
-//			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_1_OFFSET, 1);
-//		}
-//		else
-//		{
-//			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_1_OFFSET, 0);
-//			EncodeBypass((u8)(coeffVal[i] < 0));
-//			coeffVal[i] = 0;
-//		}
-//	}
-//
-//	// Signal if the absolute coefficient is greater than 2
-//	for (u8 i = 0; i < numSig; i++)
-//	{
-//		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
-//
-//		if (coeffAbs > 2)
-//		{
-//			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_2_OFFSET, 1);
-//			coeffVal[i] = coeffVal[i] < 0 ? coeffVal[i] + 2 : coeffVal[i] - 2;
-//		}
-//		else if (coeffAbs == 2)
-//		{
-//			EncodeDecision(ctxBase + CTX_ABS_COEFF_GREATER_2_OFFSET, 0);
-//			EncodeBypass((u8)(coeffVal[i] < 0));
-//			coeffVal[i] = 0;
-//		}
-//	}
-//
-//	// Signal the remaining coefficient level using Exp-Golomb coding
-//	for (u8 i = 0; i < numSig; i++)
-//	{
-//		s16 coeffAbs = coeffVal[i] < 0 ? -coeffVal[i] : coeffVal[i];
-//
-//		if (coeffAbs > 0)
-//		{
-//			// Count the number of bits
-//			u8 msb = 15;
-//			while ((coeffAbs >> msb) == 0)
-//				msb--;
-//
-//			for (u8 j = 0; j < msb; j++)
-//				EncodeDecision(ctxBase + CTX_ABS_COEFF_LEVEL_OFFSET, 1);
-//			EncodeDecision(ctxBase + CTX_ABS_COEFF_LEVEL_OFFSET, 0);
-//
-//			for (s8 j = msb - 1; j >= 0; j--)
-//				EncodeBypass((coeffAbs >> j) & 1);
-//
-//			EncodeBypass((u8)(coeffVal[i] < 0));
-//		}
-//	}
-//}
+
 
 //void hstbEnc(scuStruct *scu)
 //{

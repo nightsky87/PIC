@@ -101,6 +101,9 @@ function I = initInterpolants(P,N)
 end
 
 function [I,B] = refineInterpolants(P,I,numIter)
+    % Define the quantization scale
+    qScale = 4096;
+    
     % Determine the number of interpolants
     N = size(I,1);
     
@@ -147,14 +150,14 @@ function [I,B] = refineInterpolants(P,I,numIter)
     
     % Quantize the interpolants
     for i = 1:N
-        I{i} = round(256 * I{i});
+        I{i} = round(qScale * I{i});
     end
     
     % Stack the interpolants
     Is = cell2mat(I);
     
     % Find the best interpolant for each patch
-    E = reshape(sum(reshape((P - Is * S / 256) .^ 2,4,[])),N,[]);
+    E = reshape(sum(reshape((P - Is * S / qScale) .^ 2,4,[])),N,[]);
     [~,int] = min(E,[],1);
     
     % Find the error basis for each interpolant
@@ -164,7 +167,7 @@ function [I,B] = refineInterpolants(P,I,numIter)
         mask = (int == i);
 
         % Calculate the interpolation errors
-        E = P(1:4,mask) - round(I{i} * S(:,mask) / 256);
+        E = P(1:4,mask) - round(I{i} * S(:,mask) / qScale);
         [U,~,~] = svd(E,'econ');
         
         % Standardize the orientations of the basis vectors
@@ -172,7 +175,7 @@ function [I,B] = refineInterpolants(P,I,numIter)
             [~,ind] = max(abs(U(:,j)));
             U(:,j) = U(:,j) / sign(U(ind,j));
         end
-        B{i} = round(256 * U(:,1:3));
+        B{i} = round(qScale * U(:,1:3));
     end
 end
 

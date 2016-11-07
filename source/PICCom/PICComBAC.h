@@ -7,6 +7,9 @@
 #include <cstring>
 
 void coreEnc(s32 *tb);
+void blockEnc(s32 *tb, u16 ctxBase);
+void quadEnc(cuStruct *cu, const u8 sWidth, const u8 sHeight, const u8 quadID);
+
 //void resEnc(cpStruct *cp);
 //void modeEnc(cpStruct *cp);
 //void blockEnc(s32 *tb, u8 stride, u16 ctxBase);

@@ -70,11 +70,12 @@ int main(int argc, char *argv[])
 		InitializeEncoder(24 * width * height);
 
 	// Process each coding unit (CU)
+	pel prevDC = 0;
 	for (u16 y = 0; y < height; y += CU_SIZE)
 	{
 		for (u16 x = 0; x < width; x += CU_SIZE)
 		{
-			PICEncCU(&img(x, y), width, height, param);
+			prevDC = PICEncCU(&img(x, y), width, height, param, prevDC);
 		}
 	}
 
@@ -83,6 +84,9 @@ int main(int argc, char *argv[])
 		channels = 1;
 		img.channel(0);
 	}
+
+	//imgRef = 16 * abs(imgRef - img);
+	//imgRef.display();
 
 	printf("%.4f\n", img.PSNR(imgRef, 255));
 	//CImgDisplay disp(img, "", 0);
